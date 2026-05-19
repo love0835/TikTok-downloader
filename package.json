@@ -1,0 +1,32 @@
+{
+  "name": "tiktok-downloader",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "prebuild": "expo prebuild",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "expo": "~55.0.0",
+    "expo-clipboard": "~55.0.0",
+    "expo-constants": "~55.0.0",
+    "expo-file-system": "~55.0.0",
+    "expo-linking": "~55.0.0",
+    "expo-media-library": "~55.0.0",
+    "expo-share-intent": "^6.1.0",
+    "expo-status-bar": "~3.0.0",
+    "react": "19.1.0",
+    "react-native": "0.81.0",
+    "react-native-safe-area-context": "~5.4.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/react": "~19.1.0",
+    "typescript": "~5.9.2"
+  },
+  "private": true
+}
