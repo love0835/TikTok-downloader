@@ -1,0 +1,114 @@
+name: Build Android (EAS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'EAS build profile (preview = sideloadable APK)'
+        type: choice
+        default: preview
+        options:
+          - preview
+          - development
+          - production
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**/*.md'
+      - '.github/**'
+
+concurrency:
+  group: eas-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: EAS cloud build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      EAS_PROFILE: ${{ github.event.inputs.profile || 'preview' }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Guard — EXPO_TOKEN must be set
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::EXPO_TOKEN secret is not configured for this repository."
+            echo "Add it under Settings → Secrets and variables → Actions → New repository secret."
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Register / link EAS project
+        run: npx --yes eas-cli@latest init --non-interactive --force
+
+      - name: Run EAS build
+        run: |
+          set -o pipefail
+          npx --yes eas-cli@latest build \
+            --platform android \
+            --profile "$EAS_PROFILE" \
+            --non-interactive \
+            --json \
+            | tee build.json
+
+      - name: Extract build artifact URL
+        id: build_info
+        run: |
+          BUILD_URL=$(jq -r '.[0].artifacts.buildUrl // .[0].artifacts.applicationArchiveUrl // empty' build.json)
+          BUILD_PAGE=$(jq -r '.[0].buildUrlV2 // .[0].buildUrl // empty' build.json)
+          if [ -z "$BUILD_URL" ]; then
+            echo "::error::Could not find APK URL in build output."
+            cat build.json
+            exit 1
+          fi
+          {
+            echo "apk_url=$BUILD_URL"
+            echo "page_url=$BUILD_PAGE"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download APK
+        run: curl -L --fail -o tiktok-downloader.apk "${{ steps.build_info.outputs.apk_url }}"
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiktok-downloader-${{ env.EAS_PROFILE }}-${{ github.run_number }}
+          path: tiktok-downloader.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Job summary
+        run: |
+          {
+            echo "## TikTok Downloader — Android build ready"
+            echo ""
+            echo "**Profile:** \`${EAS_PROFILE}\`"
+            echo ""
+            echo "Direct APK download (EAS, 30-day expiry):"
+            echo ""
+            echo "${{ steps.build_info.outputs.apk_url }}"
+            echo ""
+            if [ -n "${{ steps.build_info.outputs.page_url }}" ]; then
+              echo "EAS build page: ${{ steps.build_info.outputs.page_url }}"
+              echo ""
+            fi
+            echo "Or download the **tiktok-downloader-${EAS_PROFILE}-${{ github.run_number }}** artifact attached to this run."
+          } >> "$GITHUB_STEP_SUMMARY"
